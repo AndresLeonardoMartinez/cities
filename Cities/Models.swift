@@ -7,12 +7,10 @@
 
 import Foundation
 
-// MARK: - Cities
 struct Cities: Codable {
     let data: [City]
 }
 
-// MARK: - City
 struct City: Codable {
     let country, name: String
     let id: Int
@@ -25,7 +23,6 @@ struct City: Codable {
     }
 }
 
-// MARK: - Coord
 struct Coord: Codable, Hashable {
     let lon, lat: Double
 }

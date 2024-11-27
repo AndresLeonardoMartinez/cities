@@ -10,13 +10,12 @@ import Foundation
 class CitiesViewModel: ObservableObject {
 
     @Published var searchingCityDisplays: [CityViewDisplay] = []
-    var allCityDisplays: [CityViewDisplay] = []
     @Published var isLoading = true
-//    @Published var isSearching = true
 
-    var searchHelper: CitiesSearchHelper?
-    var allCityDisplaysDic: [Int: CityViewDisplay] = [:]
-    let repository: Repository
+    private var allCityDisplays: [CityViewDisplay] = []
+    private var searchHelper: CitiesSearchHelper?
+    private var allCityDisplaysDic: [Int: CityViewDisplay] = [:]
+    private let repository: Repository
     private var searchTask: Task<Void, Never>?
 
 

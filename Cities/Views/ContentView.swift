@@ -9,45 +9,25 @@ import SwiftUI
 import MapKit
 
 struct ContentView: View {
-    @State private var orientation = UIDevice.current.orientation
     @ObservedObject var viewModel: CitiesViewModel
+    @State private var orientation = UIDevice.current.orientation
     @State private var prefix: String = ""
     @State private var selectedCoordinates: MapCameraPosition?
+
     let delay: UInt64 = 300_000_000
 
     var body: some View {
         GeometryReader { geometry in
             let isPortrait = geometry.size.height > geometry.size.width
-            if isPortrait {
-                NavigationStack {
-                    list
-                }
+            if viewModel.isLoading {
+                ProgressView()
             } else {
-                HStack {
-                    VStack {
-                        filterView
-                        ScrollView {
-                            LazyVStack(alignment: .leading) {
-                                ForEach(viewModel.searchingCityDisplays) { display in
-                                    Button(action: {
-                                        createMapPosition(coord: display.coordinates)
-                                    }) {
-                                        CityView(display: display)
-                                            .padding(.horizontal, 8)
-                                            .padding(.vertical, 4)
-                                    }
-                                }
-                            }
-                        }
+                if isPortrait {
+                    NavigationStack {
+                        portraitView
                     }
-                    .frame(width: geometry.size.width * 0.4)
-                    if let unwrappedCoordinates = Binding($selectedCoordinates) {
-                        CityMap(position: unwrappedCoordinates)
-                            .frame(maxWidth: geometry.size.width * 0.6)
-                    } else {
-                        Text("Select an city")
-                            .frame(maxWidth: geometry.size.width * 0.6)
-                    }
+                } else {
+                    landscapeView(geometry)
                 }
             }
         }
@@ -68,22 +48,16 @@ struct ContentView: View {
         )
     }
 
-    var list: some View {
-        Group {
-            if viewModel.isLoading {
-                ProgressView()
-            } else {
-                VStack {
-                    filterView
-                    ScrollView {
-                        LazyVStack(alignment: .leading) {
-                            ForEach(viewModel.searchingCityDisplays) { display in
-                                NavigationLink(value: display) {
-                                    CityView(display: display)
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                }
-                            }
+    var portraitView: some View {
+        VStack {
+            filterTextField
+            ScrollView {
+                LazyVStack(alignment: .leading) {
+                    ForEach(viewModel.searchingCityDisplays) { display in
+                        NavigationLink(value: display) {
+                            CityView(display: display)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
                         }
                     }
                 }
@@ -104,7 +78,37 @@ struct ContentView: View {
         }
     }
 
-    var filterView: some View {
+    @ViewBuilder
+    func landscapeView(_ geometry: GeometryProxy) -> some View {
+        HStack {
+            VStack {
+                filterTextField
+                ScrollView {
+                    LazyVStack(alignment: .leading) {
+                        ForEach(viewModel.searchingCityDisplays) { display in
+                            Button(action: {
+                                createMapPosition(coord: display.coordinates)
+                            }) {
+                                CityView(display: display)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                            }
+                        }
+                    }
+                }
+            }
+            .frame(width: geometry.size.width * 0.4)
+            if let unwrappedCoordinates = Binding($selectedCoordinates) {
+                CityMap(position: unwrappedCoordinates)
+                    .frame(maxWidth: geometry.size.width * 0.6)
+            } else {
+                Text("Select an city")
+                    .frame(maxWidth: geometry.size.width * 0.6)
+            }
+        }
+    }
+
+    var filterTextField: some View {
         TextField("City", text: $prefix)
             .onChange(of: prefix) {
                 Task {
