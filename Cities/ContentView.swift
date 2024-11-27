@@ -8,17 +8,37 @@
 import SwiftUI
 
 struct ContentView: View {
-    var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
-        }
-        .padding()
-    }
-}
+    @ObservedObject var viewModel: CitiesViewModel
+    @State private var prefix: String = ""
+    @FocusState private var isPrefixFocused: Bool
 
-#Preview {
-    ContentView()
+    var body: some View {
+        Group {
+            if viewModel.isLoading {
+                ProgressView()
+            } else {
+                VStack {
+                    TextField("City", text: $prefix)
+                        .focused($isPrefixFocused)
+                        .onChange(of: prefix) {
+                            viewModel.sortData(with: prefix)
+                        }
+                        .disableAutocorrection(true)
+                        .textFieldStyle(.roundedBorder)
+                        .padding()
+                    List {
+                        ForEach(
+                            viewModel.isSearching ? viewModel.cities : viewModel.allCitiesSorted,
+                            id: \.id
+                        ) { city in
+                            Text("\(city.name), \(city.country)")
+                        }
+                    }
+                }
+            }
+        }
+        .onAppear {
+            viewModel.getData()
+        }
+    }
 }

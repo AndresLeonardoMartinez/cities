@@ -9,9 +9,10 @@ import SwiftUI
 
 @main
 struct CitiesApp: App {
+    let repository = Repository()
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(viewModel: CitiesViewModel(repository: repository))
         }
     }
 }
