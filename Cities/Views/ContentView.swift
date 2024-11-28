@@ -13,6 +13,7 @@ struct ContentView: View {
     @State private var orientation = UIDevice.current.orientation
     @State private var prefix: String = ""
     @State private var selectedCoordinates: MapCameraPosition?
+    @State private var onlyFavorites: Bool = false
 
     let delay: UInt64 = 300_000_000
 
@@ -34,6 +35,9 @@ struct ContentView: View {
         .onAppear {
             viewModel.getData()
         }
+        .onChange(of: onlyFavorites) {
+            viewModel.sortData(with: prefix, onlyFavorites: onlyFavorites)
+        }
     }
 
     func createMapPosition(coord: Coord) {
@@ -53,9 +57,11 @@ struct ContentView: View {
             filterTextField
             ScrollView {
                 LazyVStack(alignment: .leading) {
-                    ForEach(viewModel.searchingCityDisplays) { display in
+                    ForEach(Array(viewModel.searchingCityDisplays.enumerated()), id: \.element.id) { index, display in
                         NavigationLink(value: display) {
-                            CityView(display: display)
+                            CityView(display: display, onTapFav: {
+                                viewModel.setFavorite(id: display.id, index: index, isOnlyFav: onlyFavorites)
+                            })
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
                         }
@@ -85,11 +91,13 @@ struct ContentView: View {
                 filterTextField
                 ScrollView {
                     LazyVStack(alignment: .leading) {
-                        ForEach(viewModel.searchingCityDisplays) { display in
+                        ForEach(Array(viewModel.searchingCityDisplays.enumerated()), id: \.element.id) { index, display in
                             Button(action: {
                                 createMapPosition(coord: display.coordinates)
                             }) {
-                                CityView(display: display)
+                                CityView(display: display, onTapFav: {
+                                    viewModel.setFavorite(id: display.id, index: index, isOnlyFav: onlyFavorites)
+                                })
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 4)
                             }
@@ -109,17 +117,23 @@ struct ContentView: View {
     }
 
     var filterTextField: some View {
-        TextField("City", text: $prefix)
-            .onChange(of: prefix) {
-                Task {
-                    try? await Task.sleep(nanoseconds: delay)
-                    await MainActor.run {
-                        viewModel.sortData(with: prefix)
+        HStack {
+            TextField("City", text: $prefix)
+                .onChange(of: prefix) {
+                    Task {
+                        try? await Task.sleep(nanoseconds: delay)
+                        await MainActor.run {
+                            viewModel.sortData(with: prefix, onlyFavorites: onlyFavorites)
+                        }
                     }
                 }
-            }
-            .disableAutocorrection(true)
-            .textFieldStyle(.roundedBorder)
-            .padding()
+                .disableAutocorrection(true)
+                .textFieldStyle(.roundedBorder)
+                .padding()
+            Spacer()
+            Toggle(isOn: $onlyFavorites, label: {
+                Text("favorites")
+            })
+        }
     }
 }

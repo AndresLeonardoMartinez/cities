@@ -13,11 +13,15 @@ class CitiesViewModel: ObservableObject {
     @Published var isLoading = true
 
     private var allCityDisplays: [CityViewDisplay] = []
+    private var allFavoriteCityDisplays: [CityViewDisplay] = []
     private var searchHelper: CitiesSearchHelper?
+
     private var allCityDisplaysDic: [Int: CityViewDisplay] = [:]
+    private var allFavoritesCityDisplaysDic: [Int: CityViewDisplay] = [:]
     private let repository: Repository
     private var searchTask: Task<Void, Never>?
-
+    private var favoriteIds = [Int]()
+    private let favorite_user_defaults_key = "FAVORITE_CITIES"
 
     init(repository: Repository) {
         self.repository = repository
@@ -25,11 +29,13 @@ class CitiesViewModel: ObservableObject {
 
     func getData() {
         isLoading = true
+        favoriteIds = UserDefaults.standard.object(forKey: favorite_user_defaults_key) as? [Int] ?? []
         allCityDisplays = sortInitData(repository.readCitiesFromBundle()?.data ?? [])
         searchingCityDisplays = allCityDisplays
         allCityDisplays.forEach { display in
             allCityDisplaysDic[display.id] = display
         }
+        getFavoritesIds()
         isLoading = false
     }
 
@@ -43,21 +49,38 @@ class CitiesViewModel: ObservableObject {
         searchHelper = CitiesSearchHelper(cities: sortedCities.map { CityId(name: $0.name, id: $0.id) })
         return sortedCities
             .map {
-            CityViewDisplay(
-                name: $0.name,
-                country: $0.country,
-                coordinates: $0.coord,
-                id: $0.id
-            )
+                CityViewDisplay(
+                    name: $0.name,
+                    country: $0.country,
+                    coordinates: $0.coord,
+                    id: $0.id,
+                    isFav: favoriteIds.contains($0.id)
+                )
+            }
+    }
+
+    func getFavoritesIds() {
+        for id in favoriteIds {
+            allFavoritesCityDisplaysDic[id] = allCityDisplaysDic[id]
+        }
+        allFavoriteCityDisplays = allFavoritesCityDisplaysDic.values.sorted {
+            if $0.name == $1.name {
+                return $0.country < $1.country
+            }
+            return $0.name < $1.name
         }
     }
 
-    func sortData(with prefix: String) {
+    func sortData(with prefix: String, onlyFavorites: Bool) {
         // Cancel any previous search
         searchTask?.cancel()
 
         if prefix == "" {
-            searchingCityDisplays = allCityDisplays
+            if onlyFavorites {
+                searchingCityDisplays = allFavoriteCityDisplays
+            } else {
+                searchingCityDisplays = allCityDisplays
+            }
             return
         }
 
@@ -68,10 +91,13 @@ class CitiesViewModel: ObservableObject {
                 return
             }
 
-            // Do expensive filtering on background thread
-            let cityIds = citiesToSearch.filter { cityId in
-                cityId.name.hasPrefix(prefix)
-            }
+            let cityIds = citiesToSearch
+                .filter { [weak self] cityId in
+                    if onlyFavorites {
+                        return self?.allFavoritesCityDisplaysDic[cityId.id] != nil && cityId.name.hasPrefix(prefix)
+                    }
+                    return cityId.name.hasPrefix(prefix)
+                }
             let results = cityIds.compactMap { self.allCityDisplaysDic[$0.id] }
             print(results.count)
             // Update UI on main thread
@@ -80,77 +106,34 @@ class CitiesViewModel: ObservableObject {
                 self.searchingCityDisplays = results
             }
         }
-//        guard let citiesToSearch = searchHelper?.search(with: prefix) else {
-//            searchingCityDisplays = allCityDisplays
-//            return
-//        }
-//        searchingCityDisplays = []
-
-//        var isStillSearching = true
-//        var index = 0
-//        var results = [CityViewDisplay]()
-//
-//        while isStillSearching && index < citiesToSearch.count {
-//            let cityId = citiesToSearch[index]
-//            if cityId.name.hasPrefix(prefix) {
-//                if let city = allCityDisplaysDic[cityId.id] {
-//                    results.append(city)
-//                }
-//                index += 1
-//            } else {
-//                if !results.isEmpty {
-//                    isStillSearching = false
-//                } else {
-//                    index += 1
-//                }
-//            }
-//        }
-//        let cityIds = citiesToSearch.filter({ cityId in
-//            cityId.name.hasPrefix(prefix)
-//        })
-//        let toReturn = cityIds.compactMap { allCityDisplaysDic[$0.id] }
-//        
-//        searchingCityDisplays = toReturn
-
-//        searchingCityDisplays = results
     }
 
-}
-
-struct CityId {
-    let name: String
-    let id: Int
-}
-
-class CitiesSearchHelper {
-    // Dictionary to store strings organized by their first character
-    private var citiesByFirstLetter: [Character: [CityId]] = [:]
-
-    init(cities: [CityId]) {
-        let sortedCities = cities.sorted { $0.name < $1.name }
-        // Group cities by their first character
-        for city in sortedCities {
-            guard let firstChar = city.name.first else { continue }
-
-            if citiesByFirstLetter[firstChar] == nil {
-                citiesByFirstLetter[firstChar] = []
-            }
-            citiesByFirstLetter[firstChar]?.append(city)
+    func setFavorite(id: Int, index: Int, isOnlyFav: Bool) {
+        let display = searchingCityDisplays[index]
+        let newDisplay = CityViewDisplay(
+            name: display.name,
+            country: display.country,
+            coordinates: display.coordinates,
+            id: display.id,
+            isFav: !display.isFav
+        )
+        if isOnlyFav {
+            searchingCityDisplays.remove(at: index)
+        } else {
+            searchingCityDisplays[index] = newDisplay
         }
-
-//        // Optional: Sort arrays for each character
-//        for (char, _) in citiesByFirstLetter {
-//            citiesByFirstLetter[char]?.sort()
-//        }
-    }
-
-    func search(with prefix: String) -> [CityId] {
-        guard !prefix.isEmpty,
-              let firstChar = prefix.first,
-              let citiesWithFirstChar = citiesByFirstLetter[firstChar] else {
-            return []
+        allCityDisplaysDic[newDisplay.id] = newDisplay
+        allFavoritesCityDisplaysDic[newDisplay.id] = newDisplay
+        
+        let isFav = !display.isFav
+        if isFav {
+            favoriteIds.append(id)
+        } else {
+            favoriteIds.removeAll{ $0 == id }
         }
-        return citiesWithFirstChar
+        getFavoritesIds()
+
+        UserDefaults.standard.set(favoriteIds, forKey: favorite_user_defaults_key)
     }
 }
 

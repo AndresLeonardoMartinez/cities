@@ -12,10 +12,12 @@ struct CityViewDisplay: Identifiable, Hashable {
     let country: String
     let coordinates: Coord
     let id: Int
+    let isFav: Bool
 }
 
 struct CityView: View {
     let display: CityViewDisplay
+    var onTapFav: () -> ()
 
     var body: some View {
         HStack {
@@ -24,6 +26,13 @@ struct CityView: View {
                     .font(.headline)
                 Text("\(display.coordinates.lat), \(display.coordinates.lon)")
                     .font(.subheadline)
+            }
+            Spacer()
+            Button(action: {
+                onTapFav()
+            }) {
+                Image(systemName: "heart")
+                    .tint(display.isFav ? .red : .gray)
             }
         }
     }
