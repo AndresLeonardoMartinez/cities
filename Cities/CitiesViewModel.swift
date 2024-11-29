@@ -9,15 +9,15 @@ import Foundation
 
 class CitiesViewModel: ObservableObject {
 
-    @Published var searchingCityDisplays: [CityViewDisplay] = []
+    @Published var cities: [CityViewDisplay] = []
     @Published var isLoading = true
 
-    private var allCityDisplays: [CityViewDisplay] = []
-    private var allFavoriteCityDisplays: [CityViewDisplay] = []
+    private var sortedCityDisplays: [CityViewDisplay] = []
+    private var sortedFavoriteCityDisplays: [CityViewDisplay] = []
     private var searchHelper: CitiesSearchHelper?
 
-    private var allCityDisplaysDic: [Int: CityViewDisplay] = [:]
-    private var allFavoritesCityDisplaysDic: [Int: CityViewDisplay] = [:]
+    private var cityDisplaysDic: [Int: CityViewDisplay] = [:]
+    private var favoritesCityDisplaysDic: [Int: CityViewDisplay] = [:]
     private let repository: Repository
     private var searchTask: Task<Void, Never>?
     private var favoriteIds = [Int]()
@@ -29,25 +29,36 @@ class CitiesViewModel: ObservableObject {
 
     func getData() {
         isLoading = true
-        favoriteIds = UserDefaults.standard.object(forKey: favorite_user_defaults_key) as? [Int] ?? []
-        allCityDisplays = sortInitData(repository.readCitiesFromBundle()?.data ?? [])
-        searchingCityDisplays = allCityDisplays
-        allCityDisplays.forEach { display in
-            allCityDisplaysDic[display.id] = display
+        searchTask?.cancel()
+        searchTask = Task { [weak self] in
+            guard let self = self else { return }
+            getFavoritesFromMemory()
+            let citiesFromJson = getInitData()
+            sortInitData(citiesFromJson)
+            createFavoriteDisplays()
+
+            await MainActor.run {
+                guard !Task.isCancelled else { return }
+                self.cities = self.sortedCityDisplays
+                self.isLoading = false
+            }
         }
-        getFavoritesIds()
-        isLoading = false
     }
 
-    func sortInitData(_ allCities: [City]) -> [CityViewDisplay] {
-        let sortedCities = allCities.sorted {
+    func getInitData() -> [City] {
+        repository.readCitiesFromBundle()?.data ?? []
+    }
+
+    func sortInitData(_ allCitiesFromJson: [City]) {
+        let sortedCities = allCitiesFromJson.sorted {
             if $0.name == $1.name {
                 return $0.country < $1.country
             }
             return $0.name < $1.name
         }
+        // Populate searchHelper to make the filter by prefix works efficiently
         searchHelper = CitiesSearchHelper(cities: sortedCities.map { CityId(name: $0.name, id: $0.id) })
-        return sortedCities
+        sortedCityDisplays = sortedCities
             .map {
                 CityViewDisplay(
                     name: $0.name,
@@ -57,17 +68,8 @@ class CitiesViewModel: ObservableObject {
                     isFav: favoriteIds.contains($0.id)
                 )
             }
-    }
-
-    func getFavoritesIds() {
-        for id in favoriteIds {
-            allFavoritesCityDisplaysDic[id] = allCityDisplaysDic[id]
-        }
-        allFavoriteCityDisplays = allFavoritesCityDisplaysDic.values.sorted {
-            if $0.name == $1.name {
-                return $0.country < $1.country
-            }
-            return $0.name < $1.name
+        sortedCityDisplays.forEach { display in
+            self.cityDisplaysDic[display.id] = display
         }
     }
 
@@ -77,9 +79,9 @@ class CitiesViewModel: ObservableObject {
 
         if prefix == "" {
             if onlyFavorites {
-                searchingCityDisplays = allFavoriteCityDisplays
+                cities = sortedFavoriteCityDisplays
             } else {
-                searchingCityDisplays = allCityDisplays
+                cities = sortedCityDisplays
             }
             return
         }
@@ -87,29 +89,48 @@ class CitiesViewModel: ObservableObject {
         searchTask = Task { [weak self] in
             guard let self = self else { return }
             guard let citiesToSearch = self.searchHelper?.search(with: prefix) else {
-                await MainActor.run { self.searchingCityDisplays = self.allCityDisplays }
+                await MainActor.run { self.cities = self.sortedCityDisplays }
                 return
             }
 
             let cityIds = citiesToSearch
                 .filter { [weak self] cityId in
                     if onlyFavorites {
-                        return self?.allFavoritesCityDisplaysDic[cityId.id] != nil && cityId.name.hasPrefix(prefix)
+                        return self?.favoritesCityDisplaysDic[cityId.id] != nil && cityId.name.hasPrefix(prefix)
                     }
-                    return cityId.name.hasPrefix(prefix)
+                    return cityId.name.uppercased().hasPrefix(prefix.uppercased())
                 }
-            let results = cityIds.compactMap { self.allCityDisplaysDic[$0.id] }
-            print(results.count)
-            // Update UI on main thread
+            let results = cityIds.compactMap { self.cityDisplaysDic[$0.id] }
+
             await MainActor.run {
                 guard !Task.isCancelled else { return }
-                self.searchingCityDisplays = results
+                self.cities = results
             }
         }
     }
 
+    func createFavoriteDisplays() {
+        for id in favoriteIds {
+            favoritesCityDisplaysDic[id] = cityDisplaysDic[id]
+        }
+        sortedFavoriteCityDisplays = favoritesCityDisplaysDic.values.sorted {
+            if $0.name == $1.name {
+                return $0.country < $1.country
+            }
+            return $0.name < $1.name
+        }
+    }
+
+    func getFavoritesFromMemory() {
+        favoriteIds = UserDefaults.standard.object(forKey: favorite_user_defaults_key) as? [Int] ?? []
+    }
+
+    func saveFavoritesOnMemory(_ favoriteIds: [Int]) {
+        UserDefaults.standard.set(favoriteIds, forKey: favorite_user_defaults_key)
+    }
+
     func setFavorite(id: Int, index: Int, isOnlyFav: Bool) {
-        let display = searchingCityDisplays[index]
+        let display = cities[index]
         let newDisplay = CityViewDisplay(
             name: display.name,
             country: display.country,
@@ -118,22 +139,21 @@ class CitiesViewModel: ObservableObject {
             isFav: !display.isFav
         )
         if isOnlyFav {
-            searchingCityDisplays.remove(at: index)
+            cities.remove(at: index)
         } else {
-            searchingCityDisplays[index] = newDisplay
+            cities[index] = newDisplay
         }
-        allCityDisplaysDic[newDisplay.id] = newDisplay
-        allFavoritesCityDisplaysDic[newDisplay.id] = newDisplay
-        
-        let isFav = !display.isFav
-        if isFav {
+        cityDisplaysDic[newDisplay.id] = newDisplay
+        favoritesCityDisplaysDic[newDisplay.id] = newDisplay
+
+        if newDisplay.isFav {
             favoriteIds.append(id)
         } else {
-            favoriteIds.removeAll{ $0 == id }
+            favoriteIds.removeAll { $0 == id }
         }
-        getFavoritesIds()
+        createFavoriteDisplays()
 
-        UserDefaults.standard.set(favoriteIds, forKey: favorite_user_defaults_key)
+        saveFavoritesOnMemory(favoriteIds)
     }
 }
 

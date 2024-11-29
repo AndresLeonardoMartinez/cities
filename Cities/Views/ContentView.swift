@@ -22,6 +22,8 @@ struct ContentView: View {
             let isPortrait = geometry.size.height > geometry.size.width
             if viewModel.isLoading {
                 ProgressView()
+                    .tint(.blue)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 if isPortrait {
                     NavigationStack {
@@ -57,7 +59,7 @@ struct ContentView: View {
             filterTextField
             ScrollView {
                 LazyVStack(alignment: .leading) {
-                    ForEach(Array(viewModel.searchingCityDisplays.enumerated()), id: \.element.id) { index, display in
+                    ForEach(Array(viewModel.cities.enumerated()), id: \.element.id) { index, display in
                         NavigationLink(value: display) {
                             CityView(display: display, onTapFav: {
                                 viewModel.setFavorite(id: display.id, index: index, isOnlyFav: onlyFavorites)
@@ -65,6 +67,7 @@ struct ContentView: View {
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
                         }
+                        .tint(.black)
                     }
                 }
             }
@@ -91,7 +94,7 @@ struct ContentView: View {
                 filterTextField
                 ScrollView {
                     LazyVStack(alignment: .leading) {
-                        ForEach(Array(viewModel.searchingCityDisplays.enumerated()), id: \.element.id) { index, display in
+                        ForEach(Array(viewModel.cities.enumerated()), id: \.element.id) { index, display in
                             Button(action: {
                                 createMapPosition(coord: display.coordinates)
                             }) {
@@ -101,6 +104,7 @@ struct ContentView: View {
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 4)
                             }
+                            .tint(.black) 
                         }
                     }
                 }
@@ -117,7 +121,7 @@ struct ContentView: View {
     }
 
     var filterTextField: some View {
-        HStack {
+        VStack {
             TextField("City", text: $prefix)
                 .onChange(of: prefix) {
                     Task {
@@ -130,10 +134,13 @@ struct ContentView: View {
                 .disableAutocorrection(true)
                 .textFieldStyle(.roundedBorder)
                 .padding()
-            Spacer()
-            Toggle(isOn: $onlyFavorites, label: {
-                Text("favorites")
-            })
+            HStack {
+                Spacer()
+                Toggle(isOn: $onlyFavorites, label: {
+                    Text("Only favorites")
+                })
+                .tint(.blue)
+            }
         }
     }
 }

@@ -9,6 +9,8 @@ struct CityId {
     let id: Int
 }
 
+/// CitiesSearchHelper is a helper to make the filter by prefix works efficiently. Basically it's a dic to store arrays of city names by its firts name.
+/// In this way when we need to filter by prefix isntead of looking for the huge array of cities we just search in the array of the first letter
 class CitiesSearchHelper {
     // Dictionary to store strings organized by their first character
     private var citiesByFirstLetter: [Character: [CityId]] = [:]
